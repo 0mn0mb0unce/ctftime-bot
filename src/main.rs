@@ -64,14 +64,11 @@ async fn get_events() -> Result<Vec<EventDto>, Box<dyn std::error::Error>> {
     let week_ago_ts = week_ago.duration_since(UNIX_EPOCH).unwrap().as_secs();
     let week_later_ts = week_later.duration_since(UNIX_EPOCH).unwrap().as_secs();
 
-    let resp = reqwest::get(format!(
+    let url = format!(
         "https://ctftime.org/api/v1/events/?limit=200&start={}&finish={}",
         week_ago_ts, week_later_ts
-    ))
-    .await?
-    .json::<Vec<EventDto>>()
-    .await?;
-
+    );
+    let resp = reqwest::get(url).await?.json::<Vec<EventDto>>().await?;
     Ok(resp)
 }
 
@@ -90,13 +87,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send>> {
                 .into_iter()
                 .filter(|dto| dto.is_ongoing())
                 .collect::<Vec<EventDto>>();
-            ongoing.sort_by_key(|dto| dto.participants);
-            ongoing.reverse();
-            let query_response = ongoing
-                .iter()
-                .map(|dto| dto.pretty_format())
-                .collect::<Vec<String>>()
-                .join("\n");
+            let query_response = if ongoing.len() != 0 {
+                ongoing.sort_by_key(|dto| dto.participants);
+                ongoing.reverse();
+                ongoing
+                    .iter()
+                    .map(|dto| dto.pretty_format())
+                    .collect::<Vec<String>>()
+                    .join("\n")
+            } else {
+                "there are no ongoing events".to_string()
+            };
+
             let article = InlineQueryResultArticle::new(
                 "0".to_string(),
                 "Show ongoing",
