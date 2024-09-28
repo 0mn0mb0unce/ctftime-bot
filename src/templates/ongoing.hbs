@@ -1,0 +1,15 @@
+{{#if data.events}}
+ongoing events for *{{data.current_dt}}*:
+
+{{#each data.events as |e|}}
+*{{e.title}}*:
+    _{{e.format}}_
+    start: {{e.start_dt}}
+    end: {{e.end_dt}}
+    time left: {{e.hours_left}}h
+    {{e.participants}} participants
+
+{{/each}}
+{{else}}
+there are no ongoing events for *{{data.current_dt}}*
+{{/if}}

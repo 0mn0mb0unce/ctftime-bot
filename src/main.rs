@@ -1,6 +1,9 @@
 #![feature(duration_millis_float)]
 
 use chrono::{DateTime, FixedOffset, Utc};
+use handlebars::Handlebars;
+use std::error::Error;
+use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use teloxide::{
     prelude::*,
@@ -11,29 +14,12 @@ use teloxide::{
 
 pub mod dtos;
 pub mod metrics;
+pub mod templates;
 use dtos::*;
 use metrics::*;
+use templates::*;
 
 impl EventDto {
-    fn pretty_format(&self) -> String {
-        let time_left = self.end_time().to_utc() - Utc::now();
-        format!(
-            "{}({}):\n    start: {}\n    end: {}\n    time left: {}h\n    {} participants\n",
-            self.title,
-            self.shrinked_format(),
-            self.start_time().format("%H:%M %v"),
-            self.end_time().format("%H:%M %v"),
-            time_left.num_hours(),
-            self.participants
-        )
-    }
-    fn shrinked_format(&self) -> String {
-        match self.format.as_str() {
-            "Attack-Defense" => "A/D".to_string(),
-            "Jeopardy" => "J".to_string(),
-            _ => self.format.clone(),
-        }
-    }
     fn start_time(&self) -> DateTime<FixedOffset> {
         let tz = FixedOffset::east_opt(3 * 60 * 60).unwrap();
         DateTime::parse_from_rfc3339(&self.start)
@@ -77,57 +63,70 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send>> {
     pretty_env_logger::init();
     let bot = Bot::from_env();
 
-    let handler = dptree::entry().branch(Update::filter_inline_query().endpoint(
-        |bot: Bot, q: InlineQuery| async move {
-            INCOMING_REQUESTS.with_label_values(&["ongoing"]).inc();
-            let start_handling_instant = Instant::now();
+    let mut handlebars = Handlebars::new();
+    handlebars
+        .register_template_string("ongoing", include_str!("templates/ongoing.hbs"))
+        .unwrap();
 
-            let api_resp = get_events().await.unwrap();
-            let mut ongoing = api_resp
-                .into_iter()
-                .filter(|dto| dto.is_ongoing())
-                .collect::<Vec<EventDto>>();
-            let query_response = if ongoing.len() != 0 {
-                ongoing.sort_by_key(|dto| dto.participants);
-                ongoing.reverse();
-                ongoing
-                    .iter()
-                    .map(|dto| dto.pretty_format())
-                    .collect::<Vec<String>>()
-                    .join("\n")
-            } else {
-                "there are no ongoing events".to_string()
-            };
-
-            let article = InlineQueryResultArticle::new(
-                "0".to_string(),
-                "Show ongoing",
-                InputMessageContent::Text(InputMessageContentText::new(query_response)),
-            );
-            let response = bot
-                .answer_inline_query(&q.id, vec![InlineQueryResult::Article(article)])
-                .cache_time(60)
-                .send()
-                .await;
-            if let Err(err) = response {
-                log::error!("Error in handler: {:?}", err);
-            }
-
-            let elapsed_time = start_handling_instant.elapsed().as_millis_f64();
-            RESPONSE_TIME_COLLECTOR
-                .with_label_values(&["ongoing"])
-                .observe(elapsed_time / 1000_f64);
-            respond(())
-        },
-    ));
+    let handler =
+        dptree::entry().branch(Update::filter_inline_query().endpoint(handle_inline_query));
 
     tokio::task::spawn(run_metrics_server());
 
     Dispatcher::builder(bot, handler)
         .enable_ctrlc_handler()
+        .dependencies(dptree::deps![Arc::new(handlebars)])
         .build()
         .dispatch()
         .await;
+
+    Ok(())
+}
+
+async fn handle_inline_query(
+    bot: Bot,
+    q: InlineQuery,
+    handlebars: Arc<Handlebars<'_>>,
+) -> Result<(), Box<dyn Error + Send + Sync>> {
+    INCOMING_REQUESTS.with_label_values(&["ongoing"]).inc();
+    let start_handling_instant = Instant::now();
+
+    let api_resp = get_events().await.unwrap();
+    let mut ongoing = api_resp
+        .into_iter()
+        .filter(|dto| dto.is_ongoing())
+        .map(|dto| EventTemplate::from_dto(&dto))
+        .collect::<Vec<EventTemplate>>();
+    ongoing.sort_by_key(|tmpl| tmpl.participants);
+    ongoing.reverse();
+
+    let template = OngoingEventsTemplate {
+        current_dt: Utc::now().format(&DT_FORMAT).to_string(),
+        events: ongoing,
+    };
+    let query_response = template.render(&handlebars);
+
+    let article = InlineQueryResultArticle::new(
+        "0".to_string(),
+        "Show ongoing",
+        InputMessageContent::Text(
+            InputMessageContentText::new(query_response)
+                .parse_mode(teloxide::types::ParseMode::MarkdownV2),
+        ),
+    );
+    let response = bot
+        .answer_inline_query(&q.id, vec![InlineQueryResult::Article(article)])
+        .cache_time(60)
+        .send()
+        .await;
+    if let Err(err) = response {
+        log::error!("Error in handler: {:?}", err);
+    }
+
+    let elapsed_time = start_handling_instant.elapsed().as_millis_f64();
+    RESPONSE_TIME_COLLECTOR
+        .with_label_values(&["ongoing"])
+        .observe(elapsed_time / 1000_f64);
 
     Ok(())
 }
