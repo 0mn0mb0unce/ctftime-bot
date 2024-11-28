@@ -1,23 +1,28 @@
 #![feature(duration_millis_float)]
 
 use chrono::{DateTime, FixedOffset, Utc};
+use dptree::case;
 use handlebars::Handlebars;
-use std::error::Error;
 use std::sync::Arc;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::Instant;
 use teloxide::{
     prelude::*,
     types::{
         InlineQueryResult, InlineQueryResultArticle, InputMessageContent, InputMessageContentText,
     },
+    utils::command::BotCommands,
 };
 
+pub mod api;
 pub mod dtos;
 pub mod metrics;
 pub mod templates;
+use api::*;
 use dtos::*;
 use metrics::*;
 use templates::*;
+
+type HandlerResult = Result<(), Box<dyn std::error::Error + Send + Sync>>;
 
 impl EventDto {
     fn start_time(&self) -> DateTime<FixedOffset> {
@@ -38,24 +43,13 @@ impl EventDto {
     }
 }
 
-async fn get_events() -> Result<Vec<EventDto>, Box<dyn std::error::Error>> {
-    let current_time = SystemTime::now();
-    let week_ago = current_time
-        .checked_sub(Duration::from_secs(60 * 60 * 24 * 7))
-        .unwrap();
-    let week_later = current_time
-        .checked_add(Duration::from_secs(60 * 60 * 24 * 7))
-        .unwrap();
-
-    let week_ago_ts = week_ago.duration_since(UNIX_EPOCH).unwrap().as_secs();
-    let week_later_ts = week_later.duration_since(UNIX_EPOCH).unwrap().as_secs();
-
-    let url = format!(
-        "https://ctftime.org/api/v1/events/?limit=200&start={}&finish={}",
-        week_ago_ts, week_later_ts
-    );
-    let resp = reqwest::get(url).await?.json::<Vec<EventDto>>().await?;
-    Ok(resp)
+#[derive(BotCommands, Clone)]
+#[command(rename_rule = "lowercase")]
+enum BotCommand {
+    #[command(aliases = ["h"], description = "show this help message")]
+    Help,
+    #[command(aliases = ["e"], description = "show information about event by id")]
+    Event(u64),
 }
 
 #[tokio::main]
@@ -67,9 +61,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send>> {
     handlebars
         .register_template_string("ongoing", include_str!("templates/ongoing.hbs"))
         .unwrap();
+    handlebars
+        .register_template_string("event", include_str!("templates/event.hbs"))
+        .unwrap();
 
-    let handler =
-        dptree::entry().branch(Update::filter_inline_query().endpoint(handle_inline_query));
+    let handler = dptree::entry()
+        .branch(Update::filter_inline_query().endpoint(handle_inline_query))
+        .branch(
+            Update::filter_message().branch(
+                teloxide::filter_command::<BotCommand, _>()
+                    .branch(case![BotCommand::Help].endpoint(handle_help_command))
+                    .branch(case![BotCommand::Event(id)].endpoint(handle_get_event_command)),
+            ),
+        );
 
     tokio::task::spawn(run_metrics_server());
 
@@ -83,15 +87,41 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send>> {
     Ok(())
 }
 
+async fn handle_help_command(bot: Bot, msg: Message) -> HandlerResult {
+    bot.send_message(msg.chat.id, BotCommand::descriptions().to_string())
+        .await?;
+    Ok(())
+}
+
+async fn handle_get_event_command(
+    bot: Bot,
+    msg: Message,
+    cmd: BotCommand,
+    handlebars: Arc<Handlebars<'_>>,
+) -> HandlerResult {
+    let BotCommand::Event(event_id) = cmd else {
+        return Ok(());
+    };
+
+    let api_resp = ctftime_api::get_event_by_id(event_id).await.unwrap();
+    let template = EventDetailedTemplate::from_dto(&api_resp);
+    let query_response = template.render(&handlebars);
+    bot.send_message(msg.chat.id, query_response)
+        .parse_mode(teloxide::types::ParseMode::MarkdownV2)
+        .await?;
+
+    Ok(())
+}
+
 async fn handle_inline_query(
     bot: Bot,
     q: InlineQuery,
     handlebars: Arc<Handlebars<'_>>,
-) -> Result<(), Box<dyn Error + Send + Sync>> {
+) -> HandlerResult {
     INCOMING_REQUESTS.with_label_values(&["ongoing"]).inc();
     let start_handling_instant = Instant::now();
 
-    let api_resp = get_events().await.unwrap();
+    let api_resp = ctftime_api::get_events().await.unwrap();
     let mut ongoing = api_resp
         .into_iter()
         .filter(|dto| dto.is_ongoing())

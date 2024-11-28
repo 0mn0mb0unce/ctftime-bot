@@ -46,3 +46,13 @@ pub struct DurationDto {
     pub hours: i64,
     pub days: i64,
 }
+
+impl DurationDto {
+    pub fn pretty_print(&self) -> String {
+        if self.days != 0 {
+            format!("{} days, {} hours", self.days, self.hours)
+        } else {
+            format!("{} hours", self.hours)
+        }
+    }
+}

@@ -1,0 +1,26 @@
+*{{event.title}}*
+
+- {{event.format}}
+{{#if event.onsite}}
+- {{event.restrictions}}, on-site, in _{{event.location}}_
+{{else}}
+- {{event.restrictions}}, online
+{{/if}}
+- weight: {{event.weight}}
+- participants: {{event.participants}}
+- start: {{event.start_dt}}
+- end: {{event.end_dt}} - {{event.duration}}
+{{#if event.is_votable_now}}
+- _weight voting is in progress_
+{{/if}}
+{{#if event.description}}
+
+{{{event.description}}}
+{{/if}}
+{{#if event.prizes}}
+
+*prizes:*
+{{{event.prizes}}}
+{{/if}}
+
+[event]({{event.url}}) [ctftime]({{event.ct_url}})
