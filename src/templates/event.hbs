@@ -1,8 +1,9 @@
-*{{event.title}}*
+{{#if event}}
+<b>{{event.title}}</b>
 
 - {{event.format}}
 {{#if event.onsite}}
-- {{event.restrictions}}, on-site, in _{{event.location}}_
+- {{event.restrictions}}, on-site, in <i>{{event.location}}</i>
 {{else}}
 - {{event.restrictions}}, online
 {{/if}}
@@ -11,16 +12,19 @@
 - start: {{event.start_dt}}
 - end: {{event.end_dt}} - {{event.duration}}
 {{#if event.is_votable_now}}
-- _weight voting is in progress_
+- <i>weight voting is in progress</i>
 {{/if}}
 {{#if event.description}}
 
-{{{event.description}}}
+<blockquote>{{{event.description}}}</blockquote>
 {{/if}}
 {{#if event.prizes}}
 
-*prizes:*
-{{{event.prizes}}}
+<b>prizes:</b>
+<blockquote>{{{event.prizes}}}</blockquote>
 {{/if}}
 
-[event]({{event.url}}) [ctftime]({{event.ct_url}})
+<a href="{{event.url}}">event</a> <a href="{{event.ct_url}}">ctftime</a>
+{{else}}
+event with such id does not exist :(
+{{/if}}

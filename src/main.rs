@@ -104,10 +104,10 @@ async fn handle_get_event_command(
     };
 
     let api_resp = ctftime_api::get_event_by_id(event_id).await.unwrap();
-    let template = EventDetailedTemplate::from_dto(&api_resp);
-    let query_response = template.render(&handlebars);
+    let template = api_resp.map(|x| EventDetailedTemplate::from_dto(&x));
+    let query_response = EventDetailedTemplate::render(&template, &handlebars);
     bot.send_message(msg.chat.id, query_response)
-        .parse_mode(teloxide::types::ParseMode::MarkdownV2)
+        .parse_mode(teloxide::types::ParseMode::Html)
         .await?;
 
     Ok(())
@@ -141,7 +141,7 @@ async fn handle_inline_query(
         "Show ongoing",
         InputMessageContent::Text(
             InputMessageContentText::new(query_response)
-                .parse_mode(teloxide::types::ParseMode::MarkdownV2),
+                .parse_mode(teloxide::types::ParseMode::Html),
         ),
     );
     let response = bot

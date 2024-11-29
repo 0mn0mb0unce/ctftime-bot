@@ -77,55 +77,19 @@ impl EventDetailedTemplate {
             end_dt: dto.end_time().format(&DT_FORMAT).to_string(),
             participants: dto.participants,
             location: dto.location.clone(),
-            description: {
-                let mut desc = dto
-                    .description
-                    .clone()
-                    .replace("(", "\\(")
-                    .replace(")", "\\)")
-                    .replace("!", "\\!")
-                    .replace("\r\n", "\r\n>");
-                if desc.is_empty() {
-                    desc
-                } else {
-                    desc.insert(0, '>');
-                    desc
-                }
-            },
+            description: dto.description.clone(),
             format: dto.format.clone(),
             is_votable_now: dto.is_votable_now,
             public_votable: dto.public_votable,
-            prizes: {
-                let mut prizes = dto
-                    .prizes
-                    .clone()
-                    .replace("(", "\\(")
-                    .replace(")", "\\)")
-                    .replace("!", "\\!")
-                    .replace("\r\n", "\r\n>");
-                if prizes.is_empty() {
-                    prizes
-                } else {
-                    prizes.insert(0, '>');
-                    prizes
-                }
-            },
+            prizes: dto.prizes.clone(),
             onsite: dto.onsite,
             restrictions: dto.restrictions.clone(),
         }
     }
-    pub fn render(&self, handlebars: &Handlebars) -> String {
-        let mut data = Map::new();
-        data.insert("event".to_string(), to_json(self));
-        handlebars
-            .render("event", &data)
-            .unwrap()
-            .replace("-", "\\-")
-            // .replace("(", "\\(")
-            // .replace(")", "\\)")
-            // .replace("[", "\\[")
-            // .replace("]", "\\]")
-            .replace(".", "\\.")
+    pub fn render(data: &Option<Self>, handlebars: &Handlebars) -> String {
+        let mut template_data = Map::new();
+        template_data.insert("event".to_string(), to_json(data));
+        handlebars.render("event", &template_data).unwrap()
     }
 }
 
@@ -133,12 +97,6 @@ impl OngoingEventsTemplate {
     pub fn render(&self, handlebars: &Handlebars) -> String {
         let mut data = Map::new();
         data.insert("data".to_string(), to_json(self));
-        handlebars
-            .render("ongoing", &data)
-            .unwrap()
-            .replace("-", "\\-")
-            .replace("(", "\\(")
-            .replace(")", "\\)")
-            .replace("+", "\\+")
+        handlebars.render("ongoing", &data).unwrap()
     }
 }

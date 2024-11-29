@@ -1,6 +1,8 @@
 pub mod ctftime_api {
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+    use reqwest::StatusCode;
+
     use crate::EventDto;
 
     pub async fn get_events() -> Result<Vec<EventDto>, Box<dyn std::error::Error>> {
@@ -23,10 +25,13 @@ pub mod ctftime_api {
         Ok(resp)
     }
 
-    pub async fn get_event_by_id(id: u64) -> Result<EventDto, Box<dyn std::error::Error>> {
+    pub async fn get_event_by_id(id: u64) -> Result<Option<EventDto>, Box<dyn std::error::Error>> {
         let url = format!("https://ctftime.org/api/v1/events/{}/", id);
-        let resp = reqwest::get(url).await?.json::<EventDto>().await?;
-
-        Ok(resp)
+        let resp = reqwest::get(url).await?;
+        if resp.status() == StatusCode::NOT_FOUND {
+            Ok(None)
+        } else {
+            Ok(Some(resp.json::<EventDto>().await?))
+        }
     }
 }

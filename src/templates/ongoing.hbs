@@ -1,9 +1,9 @@
 {{#if data.events}}
-ongoing events for *{{data.current_dt}}*:
+ongoing events for <b>{{data.current_dt}}</b>:
 
 {{#each data.events as |e|}}
-*{{e.title}}*:
-    _{{e.format}}_
+<b>{{e.title}}</b>:
+    <i>{{e.format}}</i>
     start: {{e.start_dt}}
     end: {{e.end_dt}}
     time left: {{e.hours_left}}h
@@ -11,5 +11,5 @@ ongoing events for *{{data.current_dt}}*:
 
 {{/each}}
 {{else}}
-there are no ongoing events for *{{data.current_dt}}*
+there are no ongoing events for <b>{{data.current_dt}}</b>
 {{/if}}
