@@ -3,8 +3,8 @@
 use chrono::{DateTime, FixedOffset, Utc};
 use dptree::case;
 use handlebars::Handlebars;
-use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
+use std::{sync::Arc, time::SystemTime};
 use teloxide::{
     prelude::*,
     types::{
@@ -121,7 +121,14 @@ async fn handle_inline_query(
     INCOMING_REQUESTS.with_label_values(&["ongoing"]).inc();
     let start_handling_instant = Instant::now();
 
-    let api_resp = ctftime_api::get_events().await.unwrap();
+    let current_time = SystemTime::now();
+    let week_ago = current_time
+        .checked_sub(Duration::from_secs(60 * 60 * 24 * 7))
+        .unwrap();
+    let week_later = current_time
+        .checked_add(Duration::from_secs(60 * 60 * 24 * 7))
+        .unwrap();
+    let api_resp = ctftime_api::get_events(week_ago, week_later).await.unwrap();
     let mut ongoing = api_resp
         .into_iter()
         .filter(|dto| dto.is_ongoing())
